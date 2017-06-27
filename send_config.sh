@@ -1,6 +1,7 @@
 #!/bin/bash
 
 IP_FILE="$1"
+POWER=${2}
 
 IPS=()
 
@@ -10,21 +11,28 @@ done < "${IP_FILE}"
 
 for IP in "${IPS[@]}"
 do
-    sshpass -p pepe ssh -o StrictHostKeyChecking=no -t jose@${IP} bash -c "'
-        . /lib/functions.sh
+    sshpass -p root ssh -o StrictHostKeyChecking=no -t root@${IP} ash -c "'
+        rm -rf /tmp/restore
+        mkdir -p /tmp/restore
+        tar zxf restore.tgz -C /tmp/restore
 
-        handle_interface() {
-            local config=\"$1\"
-            local custom=\"$2\"
-            # run commands for every interface section
-            config_get iface \"$config\" ifname
-            config_set \"$config\" auto 0
-        }
+        num_rad=\$(uci -c /tmp/restore/etc/config show wireless | grep wifi-device | wc -l)
+        num_rad=\$((\${num_rad} - 1))
 
-        cd /root
-        tar zxvf restore.tgz
+        for nrad in \$(seq 0 \${num_rad})
+        do
+            echo \"Set radio\${nrad} to txpower ${POWER}\"
+            uci -c /tmp/restore/etc/config set wireless.@wifi-device[\${nrad}].txpower=${POWER}
+            uci -c /tmp/restore/etc/config commit
+        done
 
-        config_load network
-        config_foreach handle_interface interface test
+        for nrad in \$(seq 0 \${num_rad})
+        do
+            uci set wireless.@wifi-device[\${nrad}].txpower=${POWER}
+            uci commit
+        done
+
+        tar zcf restore.tgz -C /tmp/restore ./
+        wifi
     '"
 done
